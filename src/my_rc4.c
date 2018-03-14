@@ -16,9 +16,8 @@ typedef int bool;
 #include <stdlib.h>
 #include <string.h>
 
-#define BUFFSIZE 1024
+#define BUFFSIZE (8*1024)
 #define SALTSIZE 8
-
 
 bool do_encrypt = true;
 bool is_salted = true;
@@ -43,7 +42,7 @@ int main(int argc, char * argv[])
         {0, 0, 0, 0}
     };
 
-    char * in_path = NULL, * out_path = NULL, * keystr = NULL;
+    char * in_path = NULL, * out_path = NULL, * pass = NULL;
 
     while ((opt = getopt_long_only(argc, argv, "i:o:k:", long_options, &long_index)) != -1) 
     {
@@ -52,7 +51,7 @@ int main(int argc, char * argv[])
             case 0: break;
             case 'i': in_path = optarg; break;
             case 'o': out_path = optarg; break;
-            case 'k': keystr = optarg; break;
+            case 'k': pass = optarg; break;
             case '?': break;
             default:
                 fprintf(stderr, "Usage: %s [-ed] [-nosalt] -in <input file path> -out <output file path> -k <encryption/decryption key>", argv[0]);
@@ -70,9 +69,12 @@ int main(int argc, char * argv[])
 
     char buffer[BUFFSIZE];
     char saltbuff[SALTSIZE], * salt;
-
+    int saltlen;
     if(!is_salted)
+    {
         salt = NULL;
+        saltlen = 0;
+    }
     else
     {
         if(do_encrypt)
@@ -87,14 +89,16 @@ int main(int argc, char * argv[])
                 handle_err("failed to read salt from file");
 
         salt = saltbuff;
+        saltlen = sizeof(salt);
     }
 
     const EVP_CIPHER * cipher = EVP_rc4();
     const EVP_MD * digest = EVP_md5();
 
-    unsigned char key[EVP_MAX_KEY_LENGTH], iv[EVP_MAX_IV_LENGTH];
+    unsigned char key[16], iv[EVP_MAX_IV_LENGTH];
 
-    EVP_BytesToKey(cipher, digest, salt, keystr, strlen(keystr), 1, key, iv); //Replace
+    if(PKCS5_PBKDF2_HMAC(pass, strlen(pass), salt, saltlen, 1, digest, 16, key) == 0)
+        handle_err("Failed to generate key");
 
     EVP_CIPHER_CTX ctx;
     EVP_CIPHER_CTX_init(&ctx);
